@@ -25,3 +25,7 @@ compile_commands.json
 
 # vscode
 .vscode/
+compile_flags.txt
+
+# vs
+.vs/

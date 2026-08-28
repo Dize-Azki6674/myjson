@@ -1,0 +1,17 @@
+{
+  "name": "test",
+  "version": 1,
+  "enabled": true,
+  "description": null,
+  "tags": [
+    "json",
+    "test",
+    "cpp"
+  ],
+  "user": {
+    "id": 123,
+    "name": "Alice",
+    "age": 20
+  },
+  "scores": [ 10, 20, 30, 40.5 ]
+}
