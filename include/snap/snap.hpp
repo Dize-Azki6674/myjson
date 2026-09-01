@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.2                    *
+ *     version 1.7                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -112,13 +112,13 @@ protected:
     virtual bool finished_() const noexcept = 0;
 
     virtual void apply_defaults_() noexcept = 0;
-    virtual std::any impl_view_() const = 0;
+    virtual std::any impl_values_() const = 0;
     virtual bool is_enabled_() const noexcept = 0;
 
 public:
     virtual ~IArg() = default;
     template<class T>
-    auto view() const;
+    auto values() const;
     explicit operator bool() const noexcept;
     virtual ArgHelpFormat format_help() const noexcept = 0;
 
@@ -128,23 +128,20 @@ public:
 
 template <class T, ArgSizeT N>
 class Continuous {
-private:
-    using _DataType = std::vector<T>;
-    _DataType data_{};
-
 public:
+    using DataType = std::vector<T>;
     constexpr static bool is_dynamic{N == dynamic};
 
     constexpr Continuous() noexcept;
 
-    using iterator = typename _DataType::iterator;
-    using const_iterator = typename _DataType::const_iterator;
+    using iterator = typename DataType::iterator;
+    using const_iterator = typename DataType::const_iterator;
     constexpr iterator begin() noexcept;
     constexpr iterator end()   noexcept;
     constexpr const_iterator begin() const noexcept;
     constexpr const_iterator end() const noexcept;
 
-    using const_reference = typename _DataType::const_reference;
+    using const_reference = typename DataType::const_reference;
     constexpr const_reference front() const;
     constexpr const_reference at(std::size_t index) const;
 
@@ -159,8 +156,10 @@ public:
     constexpr bool empty() const noexcept;
     constexpr bool full() const noexcept;
 
-    using const_subrange = std::ranges::subrange<const_iterator>;
-    const_subrange to_const_subrange() const;
+    const DataType& vector_data() const noexcept;
+
+private:
+    DataType data_{};
 };
 
 template <class T, ArgSizeT N>
@@ -247,7 +246,7 @@ protected:
     bool finished_() const noexcept override;   // completed
 
     void apply_defaults_() noexcept override;
-    std::any impl_view_() const override;
+    std::any impl_values_() const override;
 };
 
 struct OptionKey {
@@ -288,6 +287,8 @@ private:
 
     constexpr bool does_require_value_() const noexcept override;
     bool is_enabled_() const noexcept override;
+
+    std::any impl_values_() const override;
 };
 
 class FullParser {
@@ -303,9 +304,6 @@ class FullParser {
 
     std::expected<void, SnapError>
     try_parse(std::span<char* const> args) noexcept;
-
-    std::expected<void, SnapError>
-    register_positionals() noexcept;
 
     std::optional<IArg*> current_opt_;
     ArgIterator current_pos_;
@@ -397,14 +395,23 @@ public:
 
     /* Builder */
     constexpr App(std::string_view name) noexcept;
-    constexpr App& about(std::string_view description) noexcept;
-    constexpr App& version(std::string_view app_version) noexcept;
-    constexpr App& author(std::string_view app_author) noexcept;
+    constexpr App& about(std::string_view description) & noexcept;
+    constexpr App& version(std::string_view app_version) & noexcept;
+    constexpr App& author(std::string_view app_author) & noexcept;
     template<class T, ArgSizeT N>
-    constexpr App& arg(Arg<T, N> obj);
+    constexpr App& arg(Arg<T, N> obj) &;
     template<class T, ArgSizeT N>
-    constexpr App& arg(Option<T, N> obj);
-    constexpr App& builtins(BuiltInConfig biconfig) noexcept;
+    constexpr App& arg(Option<T, N> obj) &;
+    constexpr App& builtins(BuiltInConfig biconfig) & noexcept;
+
+    constexpr App&& about(std::string_view description) && noexcept;
+    constexpr App&& version(std::string_view app_version) && noexcept;
+    constexpr App&& author(std::string_view app_author) && noexcept;
+    template<class T, ArgSizeT N>
+    constexpr App&& arg(Arg<T, N> obj) &&;
+    template<class T, ArgSizeT N>
+    constexpr App&& arg(Option<T, N> obj) &&;
+    constexpr App&& builtins(BuiltInConfig biconfig) && noexcept;
 
     /* User use */
     using ParseResult = std::unordered_map<std::string, IArg*>;
@@ -484,10 +491,11 @@ inline std::string SnapError::to_string() const
 }
 
 template <class T>
-auto IArg::view() const
+auto IArg::values() const
 {
-    return std::any_cast<typename Continuous<T>::const_subrange>(
-        impl_view_());
+    using DataType = typename Continuous<T>::DataType;
+    using value_ref = std::reference_wrapper<const DataType>;
+    return std::any_cast<value_ref>(impl_values_()).get();
 }
 
 inline IArg::operator bool() const noexcept
@@ -565,9 +573,9 @@ constexpr bool Continuous<T, N>::full() const noexcept
 { return (size() == N) && !is_dynamic; }
 
 template <class T, ArgSizeT N>
-Continuous<T, N>::const_subrange
-Continuous<T, N>::to_const_subrange() const
-{ return const_subrange{begin(), end()}; }
+const Continuous<T, N>::DataType&
+Continuous<T, N>::vector_data() const noexcept
+{ return data_; }
 
 template <class T, ArgSizeT N>
 constexpr Arg<T, N>::Arg(std::string_view name) noexcept :
@@ -589,7 +597,10 @@ template <class T, ArgSizeT N>
 constexpr Option<T, N>
 Arg<T, N>::longer(std::string_view long_key) noexcept
 requires (!is_dynamic)
-{ return Option<T, N>{std::move(*this)}.longer(long_key); }
+{
+    std::string long_key_{ long_key };
+    return Option<T, N>{std::move(*this)}.longer(long_key_);
+}
 
 template <class T, ArgSizeT N>
 constexpr Option<T, N>
@@ -791,8 +802,8 @@ void Arg<T, N>::apply_defaults_() noexcept
 }
 
 template <class T, ArgSizeT N>
-std::any Arg<T, N>::impl_view_() const
-{ return values_.to_const_subrange(); }
+std::any Arg<T, N>::impl_values_() const
+{ return std::cref(values_.vector_data()); }
 
 template <class T, ArgSizeT N>
 constexpr Option<T, N>::Option(Arg<T, N>&& arg) noexcept :
@@ -841,36 +852,37 @@ constexpr const OptionKey& Option<T, N>::keys() const noexcept
 template <class T, ArgSizeT N>
 ArgHelpFormat Option<T, N>::format_help() const noexcept
 {
+    ArgHelpFormat ahf{
+        .usage{},
+        .about{this->about_}
+    };
     std::string usage{};
     if (keys_.shorter) {
-        usage += '-';
-        usage += *keys_.shorter;
+        ahf.usage += '-';
+        ahf.usage += *keys_.shorter;
     } else {
-        usage += "  ";
+        ahf.usage += "  ";
     }
 
-    usage += (keys_.shorter && keys_.longer) ? ", " : "  ";
+    ahf.usage += (keys_.shorter && keys_.longer) ? ", " : "  ";
 
     if (keys_.longer) {
-        usage += "--";
-        usage += *keys_.longer;
+        ahf.usage += "--" + (*keys_.longer);
     }
 
-    usage += " ";
+    if constexpr (!requires_value) return ahf;
+
+    ahf.usage += " ";
 
     int i;
     int required = this->value_names_.size() - this->defaults_.size();
     for (i = 0; i < required; i++) {
-        usage += "<";
-        usage += this->value_names_.at(i);
-        usage += "> ";
+        ahf.usage += "<" + this->value_names_.at(i) + "> ";
     }
     for (i = required; i < this->value_names_.size(); i++) {
-        usage += "[";
-        usage += this->value_names_.at(i);
-        usage += "] ";
+        ahf.usage += "[" + this->value_names_.at(i) + "] ";
     }
-    return {.usage{usage}, .about{this->about_}};
+    return ahf;
 }
 
 template <class T, ArgSizeT N>
@@ -951,6 +963,18 @@ bool Option<T, N>::is_enabled_() const noexcept
         bool initial_val = defs.empty() ? false : defs.front();
         return this->is_called_ != initial_val;
     }
+}
+
+template <class T, ArgSizeT N>
+std::any Option<T, N>::impl_values_() const
+{
+    if (this->is_called_)
+        return std::cref(this->values_.vector_data());
+    if (this->defaults_.full())
+        return std::cref(this->defaults_.vector_data());
+    throw std::logic_error(
+        "Cannot retrieve value: Option not specified"
+    );
 }
 
 inline FullParser::FullParser(App& app) : app_ref_(app) {}
@@ -1048,6 +1072,7 @@ FullParser::process_long_(std::string_view keyval) noexcept
 inline std::expected<void, SnapError>
 FullParser::process_value_(std::string_view value) noexcept
 {
+    if (value.empty()) return {};
     IArg* current_arg = get_current();
     if (!current_arg) {
         return std::unexpected(SnapError{
@@ -1177,26 +1202,26 @@ constexpr App::App(std::string_view name) noexcept :
     name_(std::string{name})
 {}
 
-constexpr App& App::about(std::string_view description) noexcept
+constexpr App& App::about(std::string_view description) & noexcept
 {
     about_ = std::string{description};
     return *this;
 }
 
-constexpr App& App::version(std::string_view app_version) noexcept
+constexpr App& App::version(std::string_view app_version) & noexcept
 {
     version_ = std::string{app_version};
     return *this;
 }
 
-constexpr App& App::author(std::string_view app_author) noexcept
+constexpr App& App::author(std::string_view app_author) & noexcept
 {
     author_ = std::string{app_author};
     return *this;
 }
 
 template<class T, ArgSizeT N>
-constexpr App& App::arg(Arg<T, N> obj) {
+constexpr App& App::arg(Arg<T, N> obj) & {
     std::string name = std::string{ obj.name() };
 
     IArg* ptr = register_arg_(obj);
@@ -1209,7 +1234,7 @@ constexpr App& App::arg(Arg<T, N> obj) {
 }
 
 template<class T, ArgSizeT N>
-constexpr App& App::arg(Option<T, N> obj) {
+constexpr App& App::arg(Option<T, N> obj) & {
     std::string name = std::string{obj.name()};
     auto shorter = obj.keys().shorter;
     auto longer = obj.keys().longer;
@@ -1225,10 +1250,48 @@ constexpr App& App::arg(Option<T, N> obj) {
     return *this;
 }
 
-constexpr App& App::builtins(BuiltInConfig biconfig) noexcept
+constexpr App& App::builtins(BuiltInConfig biconfig) & noexcept
 {
     biconfig_ = biconfig;
     return *this;
+}
+
+constexpr App&& App::about(std::string_view description) && noexcept
+{
+    static_cast<App&>(*this).about(description);
+    return std::move(*this);
+}
+
+constexpr App&& App::version(std::string_view app_version) && noexcept
+{
+    static_cast<App&>(*this).version(app_version);
+    return std::move(*this);
+}
+
+constexpr App&& App::author(std::string_view app_author) && noexcept
+{
+    static_cast<App&>(*this).author(app_author);
+    return std::move(*this);
+}
+
+template<class T, ArgSizeT N>
+constexpr App&& App::arg(Arg<T, N> obj)&&
+{
+    static_cast<App&>(*this).arg(obj);
+    return std::move(*this);
+}
+
+template<class T, ArgSizeT N>
+constexpr App&& App::arg(Option<T, N> obj)&&
+{
+    static_cast<App&>(*this).arg(obj);
+    return std::move(*this);
+}
+
+constexpr App&& App::builtins(BuiltInConfig biconfig) && noexcept
+{
+    static_cast<App&>(*this).builtins(biconfig);
+    return std::move(*this);
 }
 
 template<class T>
@@ -1288,9 +1351,9 @@ App::try_parse(std::span<std::string_view> args) noexcept
 {
     register_builtins_<Help, Version>();
     auto result = FullParser{*this}.try_parse(args);
-    if (!result) return std::unexpected(result.error());
     /* built-inの実行までやる */
     execute_builtins_<Help, Version>();
+    if (!result) return std::unexpected(result.error());
     return name_map_;
 }
 
@@ -1300,8 +1363,8 @@ App::try_parse(int argc, char** argv) noexcept
     std::span<char* const> args{ argv, static_cast<std::size_t>(argc) };
     register_builtins_<Help, Version>();
     auto result = FullParser{ *this }.try_parse(args.subspan(1));
-    if (!result) return std::unexpected(result.error());
     execute_builtins_<Help, Version>();
+    if (!result) return std::unexpected(result.error());
     return name_map_;
 }
 
@@ -1462,24 +1525,32 @@ default_parser( std::string_view sv )
     {
         T value{};
         std::string_view nameT = typeid(T).name();
-        auto [ptr, ec] = std::from_chars(sv.begin(), sv.end(), value);
+        auto [ptr, ec] = std::from_chars(
+            sv.data(),
+            sv.data() + sv.size(),
+            value
+        );
+
         if( ec == std::errc::invalid_argument ){
-            return std::vformat(
+            std::string estr =  std::vformat(
                 "Invalid argument({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
         if( ec == std::errc::result_out_of_range ){
-            return std::vformat(
+            std::string estr = std::vformat(
                 "Out of range({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
-        if( ptr != sv.end() ){
-            return std::vformat(
+        if( ptr != sv.data() + sv.size() ){
+            std::string estr = std::vformat(
                 "Invalid argument({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
         return value;
     }
@@ -1538,6 +1609,8 @@ inline void Help::Context_::print_options_() const noexcept
     using namespace std;
     if (!has_options_())
         return;
+
+    cout << "OPTIONS:\n";
     
     for (const IArg* const argp : app_.get_options()) {
         auto hf = argp->format_help();

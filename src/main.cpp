@@ -6,35 +6,34 @@
 #include <vector>
 #include <unordered_map>
 
-/* myjson ****************************************/
-     constexpr std::string_view VERSION = "1.0";
-/*                                               */
-/*   made by Azkey                               */
-/*************************************************/
-
-/* ToDo ************************************
-    
-********************************************/
-
-const std::size_t indent = 4;
+int get_indent_or_def(const snap::App::ParseResult& result, int def);
 
 int main( int argc, char* argv[] ){
     using namespace snap;
 	using json = nlohmann::json;
 
+    const int default_indent = 4;
 
-    App app = App{ "myjson" };
-    app.about("JSONファイルを読み込んで成型・表示するCLIツール")
-        .version("1.0")
-        .author("Azkey");
-
-    auto arg = Arg<std::filesystem::path>{ "FILE" };
-    app.arg(arg);
+    /* App Info */
+    App app = App{ "myjson" }
+        .about("JSONファイルを読み込んで成型・表示するCLIツール")
+        .version("1.1")
+        .author("Azkey")
+        .arg(Arg<std::filesystem::path>{"FILE"})
+        .arg(Arg<int>{"indent"}
+            .longer()
+            .shorter()
+            .entry("INDENT")
+            .help("インデント幅を整数値で指定します"))
+        .arg(Arg<bool>{"compact"}
+            .longer()
+            .shorter()
+            .help("コンパクト表示でプリントします"));
 
     auto result = app.parse(argc, argv);
 
-    auto path = result.at("FILE")->view<std::filesystem::path>().begin()[0];
-
+    /* Open File */
+    auto path = result.at("FILE")->values<std::filesystem::path>().at(0);
     std::ifstream ifs{ path };
     if (!ifs.is_open())
     {
@@ -42,6 +41,7 @@ int main( int argc, char* argv[] ){
         return 1;
     }
 
+    /* ifstream to json */
     json j;
     try {
         ifs >> j;
@@ -51,6 +51,16 @@ int main( int argc, char* argv[] ){
         return 1;
     }
 
-    std::cout << j.dump(indent) << std::endl;
+    /* print */
+    std::cout << j.dump(get_indent_or_def(result, default_indent)) << std::endl;
     return 0;
+}
+
+int get_indent_or_def(const snap::App::ParseResult& result, int def)
+{
+    if (*result.at("compact"))
+        return -1;
+    if (*result.at("indent"))
+        return result.at("indent")->values<int>().at(0);
+    return def;
 }
