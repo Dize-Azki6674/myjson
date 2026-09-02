@@ -6,6 +6,9 @@
 #include <vector>
 #include <unordered_map>
 
+static std::string json_to_tree(const nlohmann::json& json, std::size_t depth = 0ULL);
+static std::string repeat(std::size_t count, std::string str);
+
 int get_indent_or_def(const snap::App::ParseResult& result, int def);
 
 int main( int argc, char* argv[] ){
@@ -28,7 +31,11 @@ int main( int argc, char* argv[] ){
         .arg(Arg<bool>{"compact"}
             .longer()
             .shorter()
-            .help("コンパクト表示でプリントします"));
+            .help("コンパクト表示でプリントします"))
+        .arg(Arg<bool>{"tree"}
+            .longer()
+            .shorter()
+            .help("ツリー形式でプリントします"));
 
     auto result = app.parse(argc, argv);
 
@@ -52,8 +59,38 @@ int main( int argc, char* argv[] ){
     }
 
     /* print */
-    std::cout << j.dump(get_indent_or_def(result, default_indent)) << std::endl;
+    if (*result.at("tree"))
+        std::cout << "root\n" << json_to_tree(j) << std::endl;
+    else
+        std::cout << j.dump(get_indent_or_def(result, default_indent)) << std::endl;
     return 0;
+}
+
+static std::string json_to_tree(const nlohmann::json& json, std::size_t depth)
+{
+    std::string str{};
+    for (auto& [key, val] : json.items())
+    {
+        str += repeat(depth, "│  ")
+            + "├─ "
+            + key
+            + ": "
+            + val.type_name()
+            + "\n";
+        if (val.is_object() || val.is_array())
+            str += json_to_tree(val, depth + 1);
+    }
+    return str;
+}
+
+static std::string repeat(std::size_t count, std::string str)
+{
+    std::string result{};
+    for (std::size_t i = 0; i < count; i++)
+    {
+        result += str;
+    }
+    return result;
 }
 
 int get_indent_or_def(const snap::App::ParseResult& result, int def)
